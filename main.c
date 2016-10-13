@@ -20,52 +20,39 @@ static tpool_t *pool = NULL;
 
 llist_t *merge_list(llist_t *a, llist_t *b)
 {
-    llist_t *_list = list_new();
-    node_t *current = NULL;
-    while (a->size && b->size) {
-        llist_t *small = (llist_t *)
-                         ((intptr_t) a * (a->head->data <= b->head->data) +
-                          (intptr_t) b * (a->head->data > b->head->data));
-        if (current) {
-            current->next = small->head;
-            current = current->next;
+    llist_t *_list = list_new(0, NULL);
+    llist_t *current = _list;
+    while (a && b) {
+        if(a->data <= b->data) {
+            current->next = a;
+            a = a->next;
         } else {
-            _list->head = small->head;
-            current = _list->head;
+            current->next = b;
+            b = b->next;
         }
-        small->head = small->head->next;
-        --small->size;
-        ++_list->size;
+        current = current->next;
         current->next = NULL;
     }
 
-    llist_t *remaining = (llist_t *) ((intptr_t) a * (a->size > 0) +
-                                      (intptr_t) b * (b->size > 0));
-    if (current) current->next = remaining->head;
-    _list->size += remaining->size;
-    free(a);
-    free(b);
-    return _list;
+    llist_t *remaining = a ? a : b;
+    current->next = remaining;
+    return _list->next;
 }
 
 llist_t *merge_sort(llist_t *list)
 {
-    if (list->size < 2)
+    if (!list->next)
         return list;
-    int mid = list->size / 2;
-    llist_t *left = list;
-    llist_t *right = list_new();
-    right->head = list_nth(list, mid);
-    right->size = list->size - mid;
-    list_nth(list, mid - 1)->next = NULL;
-    left->size = mid;
-    return merge_list(merge_sort(left), merge_sort(right));
+    llist_t *mid = list_nth(list);
+    llist_t *right = mid->next;
+    mid->next = NULL;
+    return merge_list(merge_sort(list), merge_sort(right));
 }
 
 void merge(void *data)
 {
     llist_t *_list = (llist_t *) data;
-    if (_list->size < (uint32_t) data_count) {
+    if ( list_len(_list) < (uint32_t) data_count) {
         pthread_mutex_lock(&(data_context.mutex));
         llist_t *_t = tmp_list;
         if (!_t) {
@@ -93,28 +80,25 @@ void cut_func(void *data)
     llist_t *list = (llist_t *) data;
     pthread_mutex_lock(&(data_context.mutex));
     int cut_count = data_context.cut_thread_count;
-    if (list->size > 1 && cut_count < max_cut) {
+    if (list->next  && cut_count < max_cut) {
         ++data_context.cut_thread_count;
         pthread_mutex_unlock(&(data_context.mutex));
 
-        /* cut list */
-        int mid = list->size / 2;
-        llist_t *_list = list_new();
-        _list->head = list_nth(list, mid);
-        _list->size = list->size - mid;
-        list_nth(list, mid - 1)->next = NULL;
-        list->size = mid;
+        // cut list
+        llist_t *mid = list_nth(list);
+        llist_t *_list = mid->next;
+        mid->next = NULL;
 
-        /* create new task: left */
+        // create new task: left
         task_t *_task = (task_t *) malloc(sizeof(task_t));
         _task->func = cut_func;
-        _task->arg = _list;
+        _task->arg = list;
         tqueue_push(pool->queue, _task);
 
-        /* create new task: right */
+        // create new task: right
         _task = (task_t *) malloc(sizeof(task_t));
         _task->func = cut_func;
-        _task->arg = list;
+        _task->arg = _list;
         tqueue_push(pool->queue, _task);
     } else {
         pthread_mutex_unlock(&(data_context.mutex));
@@ -152,17 +136,19 @@ int main(int argc, char const *argv[])
               data_count * (thread_count > data_count) - 1;
 
     /* Read data */
-    the_list = list_new();
+    the_list = list_new(0, NULL);
+    llist_t *tmp = the_list;
 
     /* FIXME: remove all all occurrences of printf and scanf
      * in favor of automated test flow.
      */
-    printf("input unsorted data line-by-line\n");
+    // printf("input unsorted data line-by-line\n");
     for (int i = 0; i < data_count; ++i) {
         long int data;
         scanf("%ld", &data);
-        list_add(the_list, data);
+        tmp = list_add(tmp, data);
     }
+    the_list = the_list->next;
 
     /* initialize tasks inside thread pool */
     pthread_mutex_init(&(data_context.mutex), NULL);
@@ -171,7 +157,7 @@ int main(int argc, char const *argv[])
     pool = (tpool_t *) malloc(sizeof(tpool_t));
     tpool_init(pool, thread_count, task_run);
 
-    /* launch the first task */
+    // launch the first task
     task_t *_task = (task_t *) malloc(sizeof(task_t));
     _task->func = cut_func;
     _task->arg = the_list;

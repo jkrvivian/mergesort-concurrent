@@ -3,54 +3,59 @@
 
 #include "list.h"
 
-static node_t *node_new(val_t val, node_t *next)
+
+llist_t *list_new(val_t val, llist_t *next)
 {
-    /* allocate node */
-    node_t *node = malloc(sizeof(node_t));
-    node->data = val;
-    node->next = next;
-    return node;
+    // allocate node //
+    llist_t *list = malloc(sizeof(llist_t));
+    list->data = val;
+    list->next = next;
+    return list;
 }
 
-llist_t *list_new()
+uint32_t list_len(llist_t *list)
 {
-    /* allocate list */
-    llist_t *list = malloc(sizeof(llist_t));
-    list->head = NULL;
-    list->size = 0;
-    return list;
+    uint32_t len = 0;
+    for(; list; list = list->next)
+        ++len;
+    return len;
 }
 
 /*
  * list_add inserts a new node with the given value val in the list
  * (if the value was absent) or does nothing (if the value is already present).
  */
-int list_add(llist_t *list, val_t val)
+llist_t *list_add(llist_t *list, val_t val)
 {
-    node_t *e = node_new(val, NULL);
-    e->next = list->head;
-    list->head = e;
-    list->size++;
-    return 0;
+    llist_t *e = malloc(sizeof(llist_t));
+    e->data = val;
+    e->next = NULL;
+    list->next = e;
+    return e;
 }
 
 /*
  * get the node specify by index
  * if the index is out of range, it will return NULL
  */
-node_t *list_nth(llist_t *list, uint32_t idx)
+llist_t *list_nth(llist_t *list)
 {
-    if (idx > list->size)
-        return NULL;
-    node_t *head = list->head;
-    while (idx--)
-        head = head->next;
-    return head;
+    if(!list)
+        return list;
+    llist_t *fast = list;
+    llist_t *slow = list;
+
+    while(fast->next && fast->next->next) {
+        slow = slow->next;
+        fast = fast->next->next;
+    }
+
+    return slow;
 }
 
 void list_print(llist_t *list)
 {
-    node_t *cur = list->head;
+    llist_t *cur = list;
     /* FIXME: we have to validate the sorted results in advance. */
     printf("\nsorted results:\n");
     while (cur) {
